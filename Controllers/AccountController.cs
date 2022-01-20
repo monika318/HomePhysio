@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace HomePhysio.Controllers
@@ -22,7 +23,7 @@ namespace HomePhysio.Controllers
         private readonly ApplicationDbContext _applicationDbContext;
 
 
-        public AccountController(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager, IEmailSender emailSender, ApplicationDbContext applicationDbContext,IMapper mapper)
+        public AccountController(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager, IEmailSender emailSender, ApplicationDbContext applicationDbContext, IMapper mapper)
         {
             _userManager = userManager;
             _mapper = mapper;
@@ -35,7 +36,7 @@ namespace HomePhysio.Controllers
             return View();
         }
         [HttpGet]
-        public async Task<IActionResult> Register(string returnurl=null)
+        public async Task<IActionResult> Register(string returnurl = null)
         {
             ViewData["ReturnUrl"] = returnurl;
             RegisterPatientViewModel registerViewModel = new RegisterPatientViewModel();//datatype variable =new object
@@ -45,7 +46,7 @@ namespace HomePhysio.Controllers
         }
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Register(RegisterPatientViewModel model,string returnurl=null)
+        public async Task<IActionResult> Register(RegisterPatientViewModel model, string returnurl = null)
         {
             ViewData["ReturnUrl"] = returnurl;
             returnurl = returnurl ?? Url.Content("~/");
@@ -76,7 +77,7 @@ namespace HomePhysio.Controllers
                 }
                 AddErrors(result);
             }
-           // RegisterViewModel registerViewModel = new RegisterViewModel();//datatype variable =new object
+            // RegisterViewModel registerViewModel = new RegisterViewModel();//datatype variable =new object
             return View(model);
         }
 
@@ -85,8 +86,7 @@ namespace HomePhysio.Controllers
         {
             ViewData["ReturnUrl"] = returnurl;
             RegisterPhysioViewModel registerViewModel = new RegisterPhysioViewModel();//datatype variable =new object
-            ViewBag.Gender = new SelectList(_applicationDbContext.GenderModel.ToList(), nameof(GenderModel.GenderId),nameof(GenderModel.TypeName));
-
+            ViewBag.Gender = new SelectList(_applicationDbContext.GenderModel.ToList(), nameof(GenderModel.GenderId), nameof(GenderModel.TypeName));
             return View(registerViewModel);
         }
         [HttpPost]
@@ -138,9 +138,9 @@ namespace HomePhysio.Controllers
 
 
         [HttpGet]
-        public async Task<IActionResult>ConfirmEmail(string userId,string code)
+        public async Task<IActionResult> ConfirmEmail(string userId, string code)
         {
-            if(userId==null || code == null)
+            if (userId == null || code == null)
             {
                 return View("Error");
             }
@@ -156,14 +156,14 @@ namespace HomePhysio.Controllers
         }
 
         [HttpGet]
-        public IActionResult Login(string returnurl=null)
+        public IActionResult Login(string returnurl = null)
         {
             ViewData["ReturnUrl"] = returnurl;
             return View();
         }
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Login(LoginViewModel model, string returnurl=null)
+        public async Task<IActionResult> Login(LoginViewModel model, string returnurl = null)
         {
             ViewData["ReturnUrl"] = returnurl;
             returnurl = returnurl ?? Url.Content("~/");
@@ -183,9 +183,9 @@ namespace HomePhysio.Controllers
                     ModelState.AddModelError(string.Empty, "Invalid login attempt");
                     return View(model);
                 }
-                
+
             }
-            
+
             return View(model);
         }
 
@@ -209,12 +209,12 @@ namespace HomePhysio.Controllers
                 var code = await _userManager.GeneratePasswordResetTokenAsync(user);
                 var callbackurl = Url.Action("ResetPassword", "Account", new { userId = user.Id, code = code }, protocol: HttpContext.Request.Scheme);
 
-                await _emailSender.SendEmailAsync(model.Email,"Reset Password - Identity Manager",
+                await _emailSender.SendEmailAsync(model.Email, "Reset Password - Identity Manager",
                     "Please reset your password by clicking here: <a href=\"" + callbackurl + "\">link</a>");
                 //"Please reset your password by clicking here: <a href=\"" + callbackurl+ "\">link</a>");
 
                 return RedirectToAction("ForgotPasswordConfirmation");
-            } 
+            }
 
             return View(model);
         }
@@ -226,9 +226,9 @@ namespace HomePhysio.Controllers
         }
 
         [HttpGet]
-        public IActionResult ResetPassword(string code=null)
+        public IActionResult ResetPassword(string code = null)
         {
-            return code==null? View("Error"): View();
+            return code == null ? View("Error") : View();
         }
         [HttpPost]
         [ValidateAntiForgeryToken]
@@ -297,9 +297,83 @@ namespace HomePhysio.Controllers
             return RedirectToAction("AuthenticatorConfirmation");
         }
 
+
+        //ExternalLogin section
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult ExternalLogin(string provider, string returnurl = null)
+        {
+            //request a redirect to the externak login provider
+            var redirecturl = Url.Action("ExternalUrlCallback", "Account", new { Returnurl = returnurl });
+            var properties = _signInManager.ConfigureExternalAuthenticationProperties(provider, redirecturl);
+            return Challenge(properties, provider);
+        }
+
+        [HttpGet]
+
+        public async Task<IActionResult> ExternalUrlCallback(string returnurl = null, string remoteError = null)
+        {
+            if (remoteError != null)
+            {
+                ModelState.AddModelError(string.Empty, $"Error from external provider:{remoteError}");
+                return View(nameof(Login));
+            }
+
+            var info = await _signInManager.GetExternalLoginInfoAsync();
+            if (info == null)
+            {
+                return RedirectToAction(nameof(Login));
+            }
+            //signin the user with this exrernal login provider, if an account is alrady there
+            var result = await _signInManager.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, isPersistent: false);
+            if (result.Succeeded)
+            {
+
+                //update any authentication tokens
+                await _signInManager.UpdateExternalAuthenticationTokensAsync(info);
+                return LocalRedirect(returnurl);
+            }
+            else
+            {
+                //if the user does not have an account , then we will ask the user to create one
+                ViewData["ReturnUrl"] = returnurl;
+                ViewData["ProviderDisplayName"] = info.ProviderDisplayName;
+                var email = info.Principal.FindFirstValue(ClaimTypes.Email);//get email form fb and auto fill form 
+                var name = info.Principal.FindFirstValue(ClaimTypes.Name);
+                return View("ExternalLoginConfirmation", new ExternalLoginConfirmationViewModel { Email = email, Name = name });
+
+            }
+
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+
+        public async Task<IActionResult> ExternalLoginConfirmation(ExternalLoginConfirmationViewModel model, string returnurl = null)
+        {
+            returnurl = returnurl ?? Url.Content("~/");
+
+            if (ModelState.IsValid)
+            {
+                //get the info about the user from external login provider
+                var info = await _signInManager.GetExternalLoginInfoAsync();
+                if (info == null)
+                {
+                    return View("Error");
+                }
+                var user = new ApplicationUser { UserName = model.Email, Email = model.Email, Name = model.Name };
+                var result = await _userManager.CreateAsync(user);
+
+                AddErrors(result);
+            }
+            ViewData["Returnurl"] = returnurl;
+            return View(model);
+        }
+
         private void AddErrors(IdentityResult result)
         {
-            foreach(var error in result.Errors)
+            foreach (var error in result.Errors)
             {
                 ModelState.AddModelError(string.Empty, error.Description);
             }

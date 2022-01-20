@@ -46,6 +46,7 @@ namespace HomePhysio.Controllers
 
             return View();
         }
+
         [HttpPost]
         public async Task<IActionResult> Create(PhysioCategoryModel physioCategoryModel)
         {
@@ -54,7 +55,9 @@ namespace HomePhysio.Controllers
                 //this.User.Identity.Name;
                 var user = await _userManager.FindByNameAsync(this.User.Identity.Name);
                 var physio = await _applicationDbContext.PhysiotherapistModel.SingleOrDefaultAsync(x => x.UserId == user.Id);
+
                 physioCategoryModel.PhysiotherapistId = physio.PhysiotherapistId;
+
                 if (_applicationDbContext.PhysioCategoryModel.Where(x => x.PhysiotherapistId == physio.PhysiotherapistId && x.CategoryId == physioCategoryModel.CategoryId).Count() == 0)
                 {
                     _applicationDbContext.Add(physioCategoryModel);
@@ -77,19 +80,24 @@ namespace HomePhysio.Controllers
             }
 
             var physioCategoryModel = await _applicationDbContext.PhysioCategoryModel.FindAsync(id);
+
             if (physioCategoryModel == null)
             {
                 return NotFound();
             }
+
+
             ViewBag.Category = new SelectList(_applicationDbContext.CategoryModel.ToList(), nameof(CategoryModel.CategoryId), nameof(CategoryModel.Name));
             var user = await _userManager.FindByNameAsync(this.User.Identity.Name);
             var physio = await _applicationDbContext.PhysiotherapistModel.SingleOrDefaultAsync(x => x.UserId == user.Id);
+
             var physioCategory = await _applicationDbContext.PhysioCategoryModel.SingleOrDefaultAsync(x => x.Id == id);
 
             if (physio.PhysiotherapistId == physioCategory.PhysiotherapistId)
             {
                 return View(physioCategoryModel);
             }
+
             return RedirectToAction(nameof(Index));
 
         }
@@ -105,6 +113,7 @@ namespace HomePhysio.Controllers
             {
                 var user = await _userManager.FindByNameAsync(this.User.Identity.Name);
                 var physio = await _applicationDbContext.PhysiotherapistModel.SingleOrDefaultAsync(x => x.UserId == user.Id);
+
                 var physioCategory = await _applicationDbContext.PhysioCategoryModel.SingleOrDefaultAsync(x => x.Id == id);
 
                 if (physio.PhysiotherapistId == physioCategory.PhysiotherapistId)
